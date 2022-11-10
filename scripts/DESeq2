@@ -1,0 +1,121 @@
+library(tidyverse)
+library(DESeq2)
+library(stringr)
+library("RColorBrewer")
+library("pheatmap")
+
+getwd()
+primeDirectory = paste0("/Users/anita/Box Sync/BulkRNAseq/GC006/")
+setwd(primeDirectory)
+getwd()
+
+
+
+GC.sample.info <- read_csv("sampleinfo_GC.csv")
+GC.sample.info
+
+# reading summary and creating QC graphs
+pre.OC.GC <- read.table("GC.counts.txt.summary", header = TRUE)
+QC.table.GC <- as.data.frame(t(pre.OC.GC[,-1]))
+colnames(QC.table.GC) <- pre.OC.GC$Status
+rm(pre.OC.GC)
+QC.table.GC$sample <- str_remove(row.names(QC.table.GC),".star.Aligned.sortedByCoord.out.bam")
+QC.table.GC$sample <- str_remove(QC.table.GC$sample,"X.project.Owens_Rivanna.00.Raw.and.Aligned.Files.bulk.RNA.seq.2021.11.in.vitro.GC.03.align.")
+QC.table.GC <- select(QC.table.GC, sample, Assigned:Unassigned_NoFeatures)
+QC.table.GC <- inner_join(GC.sample.info, QC.table.GC, by="sample")
+QC.table.GC <- mutate(QC.table.GC, counts = Assigned+Unassigned_MultiMapping+Unassigned_NoFeatures)
+QC.table.GC <- mutate(QC.table.GC, percent_assigned = (Assigned/counts)*100)
+QC.table.GC <- mutate(QC.table.GC, percent_unassigned = 100-percent_assigned)
+
+#Plotting graphs and saving them
+ggplot(QC.table.GC, aes(condition,percent_assigned)) + geom_bar(stat="identity", aes(fill=sample), position="dodge", show.legend = FALSE) + labs(y="Percent of assigned reads", x="") + theme(axis.text.x = element_text(angle=45, hjust = 1))
+tiff(filename = "2021.11.QC.Percent.Assigned.by.Condition.tiff", width = 1920, height = 1080)
+ggplot(QC.table.GC, aes(condition,percent_assigned)) + geom_bar(stat="identity", aes(fill=sample), position="dodge", show.legend = FALSE) + 
+  labs(y="Percent of assigned reads", x="Condition") + 
+  theme(axis.text.x = element_text(angle=45, hjust = 1, size = "24")) + 
+  theme(axis.text.y = element_text(size = 24)) +
+  theme(axis.title.x = element_text(size = 30)) +
+  theme(axis.title.y = element_text(size = 30))
+dev.off()
+
+ggplot(QC.table.GC, aes(condition,percent_unassigned)) + geom_bar(stat="identity", aes(fill=sample), position="dodge", show.legend = FALSE) + labs(y="Percent of unassigned reads", x="") + theme(axis.text.x = element_text(angle=45, hjust = 1))
+tiff(filename = "2021.11.QC.Percent.Unassigned.by.Condition.tiff", width = 1920, height = 1080)
+ggplot(QC.table.GC, aes(condition,percent_unassigned)) + geom_bar(stat="identity", aes(fill=sample), position="dodge", show.legend = FALSE) +
+  labs(y="Percent of unassigned reads", x="Condition") +
+  theme(axis.text.x = element_text(angle=45, hjust = 1, size = "24")) + 
+  theme(axis.text.y = element_text(size = 24)) +
+  theme(axis.title.x = element_text(size = 30)) +
+  theme(axis.title.y = element_text(size = 30))
+dev.off()
+
+
+# Import & pre-process ----------------------------------------------------
+
+## Import data from featureCounts
+## featureCounts -a genes.gtf -o counts.txt -T 12 -t exon -g gene_name *sam
+countGCdata <- read.table("GC.counts.txt", header=TRUE, row.names=1, sep="\t")
+colnames(countGCdata)
+
+## Remove first five columns (chr, start, end, strand, length)
+countGCdata <- countGCdata[ ,6:ncol(countGCdata)]
+
+## Remove cruft from filenames
+colnames(countGCdata) <- colnames(countGCdata) %>% str_remove(".star.Aligned.sortedByCoord.out.bam")
+colnames(countGCdata) <- colnames(countGCdata) %>% str_remove("X.project.Owens_Rivanna.00.Raw.and.Aligned.Files.bulk.RNA.seq.2021.11.in.vitro.GC.03.align.")
+
+colnames(countGCdata)
+
+## Convert to matrix (mot sure if this is still necessary in the newer version, but it does not hurt)
+countGCdata <- as.matrix(countGCdata)
+head(countGCdata)
+
+## Get coldata
+colGCdata <- data.frame(row.names=GC.sample.info$sample, GC.sample.info %>% select(-sample))
+# Convert character columns to factor
+(colGCdata$condition <- factor(colGCdata$condition))
+colGCdata
+
+
+# Check to see if the data is set properly. It is absolutely necessary to have the columns in the count data to be in the same order as the row names
+# in col data. First we check if all of them are present and then if they are in the same order
+all(rownames(colGCdata) %in% colnames(countGCdata))
+
+all(rownames(colGCdata) == colnames(countGCdata))
+
+# Now, we create the DESeq2 data frame using the info that we previously arranged
+ddsGC <- DESeqDataSetFromMatrix(countData=countGCdata, 
+                                       colData=colGCdata, 
+                                       design=~condition) # if we have more info, you can add here, such as different genotypes, time points, etc
+ddsGC
+
+rldGC <- rlogTransformation(ddsGC)
+plotPCA(rldGC)
+
+  tiff(filename = "2021.11.PCA.GC1.tiff", width = 1920, height = 1080)
+  plotPCA(rldGC)+
+    geom_point(size = 10, aes(shape=group)) +
+    scale_shape_manual(values=1:nlevels(rldGC$condition)) +
+    theme(axis.text.x = element_text(size = 24)) +
+    theme(axis.text.y = element_text(size = 24)) +
+    theme(axis.title.x = element_text(size = 30)) +
+    theme(axis.title.y = element_text(size = 30)) +
+    theme(legend.title = element_text(size=30)) +
+    theme(legend.text = element_text(size=30))
+  dev.off()
+#######
+sampleDists <- dist(t(assay(rldGC)))
+
+sampleDistMatrix <- as.matrix(sampleDists)
+rownames(sampleDistMatrix) <- rldGC$condition
+colnames(sampleDistMatrix) <- NULL
+colors <- colorRampPalette( rev(brewer.pal(9, "BuGn")) )(255)
+
+tiff(filename = "2021.11.Sample.Distance.Heatmap.tiff", width = 1920, height = 1080)
+pheatmap(sampleDistMatrix,
+         clustering_distance_rows=sampleDists,
+         clustering_distance_cols=sampleDists,
+         col=colors, fontsize = 16)
+dev.off()
+
+# Start the Differential analysis
+ddsGC <- DESeq(ddsGC)

@@ -9,12 +9,10 @@
 3. Remove reads where the Qscore (Quality value) of over 90% bases of the read is <= 10
 
 ## 3. Align reads to a reference using [STAR](https://github.com/alexdobin/STAR/blob/master/doc/STARmanual.pdf) 
-
-
-3. Count the number of reads assigned to each contig/gene
-4. Extract counts and store in a matrix
-5. Create column metadata (sampleinfo) table
-6. Analyze count data using DESEQ2
+## 4. Count the number of reads assigned to each contig/gene using [featureCounts (a part of RSubread package)](https://subread.sourceforge.net/SubreadUsersGuide.pdf)
+- Extract counts and store in a matrix
+- Create column metadata (sampleinfo) table
+## 6. Analyze count data using [DESEQ2](https://bioconductor.org/packages/devel/bioc/vignettes/DESeq2/inst/doc/DESeq2.html)
 
 
 
